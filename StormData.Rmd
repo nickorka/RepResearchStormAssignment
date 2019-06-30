@@ -1,0 +1,172 @@
+---
+title: "Storm Data Analysis"
+author: "Orka"
+date: "6/23/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+```
+## Synopsis
+Storms and other severe weather events can cause both public health and economic problems for communities and municipalities. Many severe events can result in fatalities, injuries, and property damage, and preventing such outcomes to the extent possible is a key concern.
+
+This project involves exploring the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database. This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage.
+
+## Data Processing
+* Sorce of the data [Storm Data](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2)
+* National Weather Service [Storm Data Documentation](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf)
+* National Climatic Data Center Storm Events [FAQ](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2FNCDC%20Storm%20Events-FAQ%20Page.pdf)
+
+### Reading data
+
+```{r storm_data, cache=TRUE}
+if(!dir.exists("data")) {
+    dir.create("data")
+}
+filePath = "data/storm_data.bz2"
+if(!file.exists(filePath)) {
+    download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2", 
+                  filePath, 
+                  method = "curl")
+}
+stormData = read.csv(filePath)
+```
+### The data structure
+```{r}
+str(stormData[10,])
+```
+
+### Injury data preparation
+
+```{r injures_by_event_type, cache=TRUE, message=FALSE}
+injuriesByEvent <- stormData %>%
+    group_by(EVTYPE) %>%
+    summarise(injuries = sum(INJURIES, na.rm = T),
+              fatalities = sum(FATALITIES, na.rm = T),
+              eventNum = n(),
+              injuriesPerEvent = injuries/eventNum,
+              fatalitiesPerEvent = fatalities / eventNum)
+```
+#### Most harmful events to population health 
+* Top 10 per event type
+
+**over all injures**
+```{r}
+arrange(injuriesByEvent, desc(injuries)) %>% 
+    select(EVTYPE, injuries) %>% 
+    head(10) -> top10TotInjures
+print(top10TotInjures)
+```
+**over all fatalities**
+```{r}
+arrange(injuriesByEvent, desc(fatalities)) %>% 
+    select(EVTYPE, fatalities) %>%
+    head(10) -> top10TotFatalities
+print(top10TotFatalities)
+```
+* Top 10 per event report
+
+**number of injures**
+```{r}
+arrange(injuriesByEvent, desc(injuriesPerEvent)) %>% 
+    select(EVTYPE, injuriesPerEvent) %>%
+    head(10) -> top10AvgInjuries
+print(top10AvgInjuries)
+```
+**number of fatalities**
+```{r}
+arrange(injuriesByEvent, desc(fatalitiesPerEvent)) %>% 
+    select(EVTYPE, fatalitiesPerEvent) %>%
+    head(10) -> top10AvgFatalities
+print(top10AvgFatalities)
+```
+
+### Economic data preparation
+
+```{r economic_by_event_type, cache=TRUE}
+chr_to_multiplier <- function(chr) {
+    case_when(
+        grepl("[0-9]", chr) ~ 10,
+        grepl("[h|H]", chr) ~ 10^2,
+        grepl("[k|K]", chr) ~ 10^3,
+        grepl("[m|M]", chr) ~ 10^6,
+        grepl("[b|B]", chr) ~ 10^9,
+        TRUE ~ 0
+    )
+}
+economicByEvent <- stormData %>%
+    group_by(EVTYPE) %>%
+    summarise(propDmg = sum(PROPDMG * chr_to_multiplier(PROPDMGEXP)),
+              cropDmg = sum(CROPDMG * chr_to_multiplier(CROPDMGEXP)),
+              eventNum = n(),
+              propDmgPerEvent = propDmg/eventNum,
+              cropDmgPerEvent = cropDmg / eventNum,
+              totDmg = propDmg + cropDmg,
+              totDmgPerEvent = totDmg / eventNum)
+```
+
+#### Events with greatest economic consequences
+
+* Top 10 event types by total damage
+
+```{r}
+arrange(economicByEvent, desc(totDmg)) %>% 
+    select(EVTYPE, totDmg) %>%
+    head(10) -> top10TotDmg
+print(top10TotDmg)
+```
+
+* Top 10 event types by average damage per report
+
+```{r}
+arrange(economicByEvent, desc(totDmgPerEvent)) %>% 
+    select(EVTYPE, totDmgPerEvent) %>%
+    head(10) -> top10AvgDmg
+print(top10AvgDmg)
+```
+
+## Results
+### Injures
+```{r fig.height=5}
+par(mfcol = c(1,2), las=2, mar=c(8,4,4,3))
+barplot(top10TotInjures$injuries, names.arg = top10TotInjures$EVTYPE,
+        main="Total injures per event type",
+        cex.axis = 0.5, cex.names = 0.5,
+        col = "blue")
+barplot(top10AvgInjuries$injuriesPerEvent, names.arg = top10AvgInjuries$EVTYPE,
+        main="Averange injures per event type",
+        cex.axis = 0.5, cex.names = 0.5,
+        col = "blue")
+```
+
+### Fatalities
+
+```{r fig.height=5}
+par(mfcol = c(1,2), las=2, mar=c(8,4,4,3))
+barplot(top10TotFatalities$fatalities, names.arg = top10TotInjures$EVTYPE,
+        main="Total fatalities per event type",
+        cex.axis = 0.5, cex.names = 0.5,
+        col = "red")
+barplot(top10AvgFatalities$fatalitiesPerEvent, names.arg = top10AvgInjuries$EVTYPE,
+        main="Averange fatalities per event type",
+        cex.axis = 0.5, cex.names = 0.5,
+        col = "red")
+```
+
+### Damages
+
+```{r fig.height=5}
+par(mfcol = c(1,2), las=2, mar=c(8,4,4,3))
+barplot(top10TotDmg$totDmg / 10^9, names.arg = top10TotDmg$EVTYPE,
+        main="Total damages per event type",
+        cex.axis = 0.5, cex.names = 0.5,
+        col = "yellow", ylab = "Damage, $B")
+barplot(top10AvgDmg$totDmgPerEvent / 10^6, names.arg = top10AvgDmg$EVTYPE,
+        main="Averange damages per event type",
+        cex.axis = 0.5, cex.names = 0.5,
+        col = "yellow", ylab = "Damage, $M")
+```
+
+
